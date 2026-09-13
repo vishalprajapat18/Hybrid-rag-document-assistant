@@ -2,31 +2,31 @@ from app.embedding import creating_embedding
 from app.qdrant_db import search_chunks
 from app.bm25_db import search as bm25_search
 from app.reranker import rerank
-def hybrid_search(question):
 
-    # Vector search
+
+def hybrid_search(question, candidates=20):
+
+    # Vector search - pull a wide candidate pool, the reranker picks the best few
     query_vector = creating_embedding(question)
-    vector_results = search_chunks(query_vector, limit=3)
+    vector_results = search_chunks(query_vector, limit=candidates)
 
     # BM25 search
-    bm25_results = bm25_search(question, k=3)
+    bm25_results = bm25_search(question, k=candidates)
 
-    # Merge both
+    # Merge both, keeping page/filename with each chunk so answers can cite them
     merged = []
     seen = set()
 
-
-
     for r in vector_results:
-        text = r.payload["text"]
-        merged.append(text)
-        seen.add(text)
+        chunk = r.payload
+        if chunk["text"] not in seen:
+            merged.append(chunk)
+            seen.add(chunk["text"])
 
-        
-    for text in bm25_results:
-        if text not in seen:
-            merged.append(text)
-            seen.add(text)
+    for chunk in bm25_results:
+        if chunk["text"] not in seen:
+            merged.append(chunk)
+            seen.add(chunk["text"])
 
     ranked = rerank(question, merged)
     return ranked
