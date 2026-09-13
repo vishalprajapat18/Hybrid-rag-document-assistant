@@ -1,9 +1,5 @@
 from pydantic import BaseModel
 from typing import List
-class CustomerFeedback(BaseModel):
-    sentiment: str
-    category: str
-    summary: str
 
 class Message(BaseModel):
     role:str

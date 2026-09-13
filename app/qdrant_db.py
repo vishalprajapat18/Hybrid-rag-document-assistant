@@ -36,7 +36,6 @@ def insert_chunks(
     points = []
 
     for chunk, vector in zip(chunks, embeddings):
-        #We don't need idx anymore because UUID generates the point ID
 
         points.append(
             PointStruct(
@@ -66,18 +65,6 @@ def search_chunks(query_vector, limit=3):
 
     return response.points
 
-
-#And every chunk has its own unique Qdrant ID:
-
-#THESIS.pdf
-# ├─ chunk → UUID #1
-# ├─ chunk → UUID #2
-# └─ chunk → UUID #3
-
-#resume.pdf
-# ├─ chunk → UUID #4
-# ├─ chunk → UUID #5
-# └─ chunk → UUID #6
 
 def delete_document(document_id: str):
 
