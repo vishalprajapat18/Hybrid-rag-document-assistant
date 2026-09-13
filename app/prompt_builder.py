@@ -4,7 +4,9 @@ from app.models import Message
 def build_prompt(question: str, results, history: List[Message]):
     context = ""
     for chunk in results:
-        context += f"[{chunk['filename']}, page {chunk['page']}]\n{chunk['text']}\n\n"
+        # .get() because chunks indexed by older versions may lack filename/page
+        source = f"{chunk.get('filename', 'document')}, page {chunk.get('page', '?')}"
+        context += f"[{source}]\n{chunk['text']}\n\n"
 
     conversation = ""
     for msg in history:
