@@ -22,4 +22,6 @@ tempCodeRunnerFile.py
 .DS_Store
 Thumbs.db
 
-data/
+# Local PDFs, except the public document used by evaluate.py
+data/*
+!data/nist_ai_rmf_1.0.pdf
