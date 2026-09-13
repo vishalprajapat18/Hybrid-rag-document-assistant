@@ -72,9 +72,10 @@ The goal was to build the complete lifecycle of a RAG application rather than on
 - **Local sentence-transformer embeddings**
 - **Qdrant vector search** for semantic retrieval
 - **BM25 keyword search** for lexical retrieval
-- **Hybrid retrieval** combining semantic and keyword results
+- **Hybrid retrieval** combining semantic and keyword results (20 candidates from each)
 - **Cross-encoder reranking** to improve final context selection
 - **Groq LLM integration** for grounded answer generation
+- **Page-cited answers** – every chunk keeps its filename and page number through retrieval, and the model is asked to cite the pages it used
 - **Conversation history** for follow-up questions
 - **Streaming response endpoint**
 - **Document metadata and UUID-based identification**
@@ -82,7 +83,7 @@ The goal was to build the complete lifecycle of a RAG application rather than on
 - **Pydantic request/response validation**
 - **Logging and API error handling**
 - **Health-check endpoint**
-- **Basic retrieval evaluation**
+- **Retrieval evaluation script** with reproducible numbers (see [Retrieval Evaluation](#retrieval-evaluation))
 - **Streamlit web interface**
 - **Dockerized FastAPI backend**
 
@@ -140,7 +141,9 @@ BM25
 Keyword Matches
 ```
 
-The results are merged and duplicates are removed.
+Tokenization splits on anything that is not a letter or digit (`re.findall(r"\w+", ...)`). This matters more than it looks: with a plain `.split()`, the question *"What is quercetin?"* produced the token `quercetin?`, which never matched `quercetin` in the document, so keyword retrieval silently failed for almost every real question (see the evaluation below).
+
+Each source returns its top 20 candidates. The results are merged, duplicates are removed, and each chunk keeps its `filename` and `page` metadata.
 
 ### 3. Reranking
 
@@ -178,7 +181,7 @@ Groq LLM
 Grounded Answer
 ```
 
-The prompt instructs the model to answer using the retrieved document context and indicate when the answer cannot be found.
+Each context passage is labelled with its source, e.g. `[thesis.pdf, page 47]`. The prompt instructs the model to answer using only the retrieved context, to mention the page numbers it used, and to say so when the answer cannot be found.
 
 ---
 
@@ -205,12 +208,12 @@ The prompt instructs the model to answer using the retrieved document context an
 ```text
 .
 ├── app/
-│   ├── bm25_db.py
+│   ├── bm25_db.py          # BM25 index + tokenizer
 │   ├── chunker.py
 │   ├── config.py
 │   ├── embedding.py
-│   ├── evaluation.py
-│   ├── hybrid.py
+│   ├── groq_client.py
+│   ├── hybrid.py           # vector + BM25 -> rerank
 │   ├── ingestion.py
 │   ├── llm.py
 │   ├── models.py
@@ -223,7 +226,12 @@ The prompt instructs the model to answer using the retrieved document context an
 ├── frontend/
 │   └── streamlit_app.py
 │
+├── data/
+│   └── nist_ai_rmf_1.0.pdf # public document used by evaluate.py
+│
 ├── main.py
+├── evaluate.py             # retrieval evaluation
+├── eval_questions.json     # 30 questions with answer pages/keywords
 ├── Dockerfile
 ├── requirements.txt
 ├── .env.example
@@ -279,7 +287,7 @@ Example response:
 
 ```json
 {
-  "answer": "..."
+  "answer": "Quercetin is a flavonoid that acts as both reducing and stabilizing agent ... (page 23, page 30)"
 }
 ```
 
@@ -448,13 +456,43 @@ It also exposed environment-specific assumptions during development, such as rel
 
 ---
 
+## Retrieval Evaluation
+
+Claims like "hybrid is better than vector-only" are easy to make and rarely measured, so the repository includes a small evaluation:
+
+```bash
+python evaluate.py
+```
+
+The script indexes the [NIST AI Risk Management Framework](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf) (48 pages, public domain, included in `data/`) and asks 30 questions from `eval_questions.json`. Half are exact-term lookups (`"What is MEASURE 2.7 about?"`) where keyword search should do well, half are paraphrased (`"When should development of an AI system stop?"`) where semantic search should do well. Each question lists the page(s) that contain the answer and a phrase from it; a retrieved chunk counts as a hit only if it is from one of those pages **and** contains the phrase.
+
+Results (top 5 chunks, 286 chunks in the index):
+
+| Retrieval | Hit@5 all | Hit@5 keyword | Hit@5 semantic | MRR@5 |
+|---|---|---|---|---|
+| BM25, old `.split()` tokenizer | 67% | 67% | 67% | 0.49 |
+| BM25, fixed tokenizer | 83% | 87% | 80% | 0.73 |
+| Vector only | 87% | 87% | 87% | 0.63 |
+| **Hybrid + rerank (what the app uses)** | **100%** | **100%** | **100%** | **0.90** |
+
+*Hit@5*: share of questions with a relevant chunk in the top 5. *MRR@5*: mean of 1/rank of the first relevant chunk, so 0.90 means the answer is usually the first chunk.
+
+Two things this showed me:
+
+- **The tokenizer bug was real and large.** Replacing `.split()` with a regex moved BM25 from 67% to 83% on the same questions – one line of code.
+- **Vector and keyword search fail on different questions.** Neither alone reaches 90%, but fusing both and letting the cross-encoder pick gets every question, and puts the right chunk first far more often (MRR 0.63 → 0.90).
+
+The question set is small and single-document, so these numbers are indicative rather than a benchmark. Generation quality (is the *answer* correct, not just the retrieved chunk) is not measured yet.
+
+---
+
 ## Current Limitations
 
 This repository is designed as a portfolio-scale RAG application rather than a fully distributed production system.
 
 Current limitations include:
 
-- Qdrant is currently used in local filesystem mode.
+- Qdrant is currently used in local filesystem mode, which allows only one process to open the storage folder at a time (a second server instance fails with a lock error).
 - BM25 state is maintained in application memory.
 - The lightweight document registry is also maintained in memory.
 - Container-local data is not intended as durable production storage.
@@ -473,7 +511,7 @@ Potential extensions include:
 - Persistent document metadata database
 - Object storage for uploaded documents
 - Document-specific retrieval filters
-- Automated retrieval and generation evaluation
+- Generation evaluation (answer correctness and faithfulness, not only retrieval)
 - Authentication and multi-user document isolation
 - Observability and tracing
 - Cloud deployment and CI/CD
@@ -488,6 +526,7 @@ Building this project provided hands-on experience with:
 - semantic and lexical information retrieval
 - embedding generation and vector databases
 - hybrid retrieval and reranking
+- measuring retrieval quality instead of assuming it (Hit@k, MRR)
 - LLM prompt construction
 - REST API design with FastAPI
 - request validation with Pydantic
