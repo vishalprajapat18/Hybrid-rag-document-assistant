@@ -1,16 +1,4 @@
----
-title: Hybrid RAG Document Assistant
-emoji: 📄
-colorFrom: blue
-colorTo: purple
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # Document Intelligence RAG Assistant
-
-**Live demo:** https://huggingface.co/spaces/vishalyet/hybrid-rag-document-assistant
 
 A document question-answering system built with **FastAPI, Qdrant, BM25, Cross-Encoder Reranking, Sentence Transformers, Groq, and Streamlit**.
 
@@ -97,7 +85,7 @@ The goal was to build the complete lifecycle of a RAG application rather than on
 - **Health-check endpoint**
 - **Retrieval evaluation script** with reproducible numbers (see [Retrieval Evaluation](#retrieval-evaluation))
 - **Streamlit web interface**
-- **Dockerized** (API + UI in one image) and **deployed on Hugging Face Spaces**
+- **Dockerized** – API and UI run from one image with a single command
 
 ---
 
@@ -428,11 +416,7 @@ Run it while injecting environment variables at runtime:
 docker run --env-file .env -p 7860:7860 rag-app
 ```
 
-The container starts the FastAPI backend in the background and serves the Streamlit UI on port `7860` (see `start.sh`). The image installs the CPU-only PyTorch wheel and downloads the embedding and reranking models at build time, so startup is fast and no secrets are baked in.
-
-## Deployment (Hugging Face Spaces)
-
-The same Dockerfile runs the live demo on a free CPU Space. The YAML block at the top of this README is the Space configuration; `GROQ_API_KEY` is set as a Space secret. Because the free tier has no persistent disk, uploaded documents and the index reset whenever the Space restarts.
+The container starts the FastAPI backend in the background and serves the Streamlit UI on port `7860` (see `start.sh`), then open http://localhost:7860. The image installs the CPU-only PyTorch wheel and downloads the embedding and reranking models at build time, so startup is fast and no secrets are baked in. The same image can be deployed to any container host (Cloud Run, a VPS, Hugging Face Spaces) without changes; `start.sh` honours the `PORT` variable those platforms set.
 
 ---
 
@@ -509,7 +493,7 @@ Current limitations include:
 - Qdrant is currently used in local filesystem mode, which allows only one process to open the storage folder at a time (a second server instance fails with a lock error).
 - BM25 state is maintained in application memory.
 - The lightweight document registry is also maintained in memory.
-- Container-local data is not intended as durable production storage; on the free Hugging Face Space, uploads and the index are lost on restart.
+- Container-local data is not intended as durable production storage; uploads and the index inside a container are lost when it is recreated.
 - Authentication and multi-user isolation are not implemented.
 - Retrieval is not currently filtered to an explicitly selected document.
 
@@ -528,7 +512,7 @@ Potential extensions include:
 - Generation evaluation (answer correctness and faithfulness, not only retrieval)
 - Authentication and multi-user document isolation
 - Observability and tracing
-- CI/CD (tests and evaluation on every push)
+- Cloud deployment and CI/CD
 
 ---
 
