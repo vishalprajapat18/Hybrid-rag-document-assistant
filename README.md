@@ -1,5 +1,7 @@
 # Document Intelligence RAG Assistant
 
+![Demo: upload a PDF, ask a question, verify the sources](docs/demo.gif)
+
 A document question-answering system built with **FastAPI, Qdrant, BM25, Cross-Encoder Reranking, Sentence Transformers, Groq, and Streamlit**.
 
 The application allows users to upload PDF documents and ask natural-language questions grounded in their contents. It combines semantic vector search with keyword-based BM25 retrieval and cross-encoder reranking to improve retrieval quality before sending context to the LLM.
