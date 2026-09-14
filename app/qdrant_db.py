@@ -55,12 +55,25 @@ def insert_chunks(
         points=points
     )
 
-def search_chunks(query_vector, limit=3):
+def search_chunks(query_vector, limit=3, document_id=None):
+
+    # Optional filter so a question only searches one uploaded document
+    query_filter = None
+    if document_id:
+        query_filter = Filter(
+            must=[
+                FieldCondition(
+                    key="document_id",
+                    match=MatchValue(value=document_id)
+                )
+            ]
+        )
 
     response = client.query_points(
         collection_name=COLLECTION_NAME,
         query=query_vector,
-        limit=limit
+        limit=limit,
+        query_filter=query_filter
     )
 
     return response.points

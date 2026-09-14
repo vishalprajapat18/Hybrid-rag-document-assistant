@@ -41,7 +41,7 @@ def add_chunks(
     bm25 = BM25Okapi(tokenized_chunks)
 
 
-def search(query: str, k: int = 3):
+def search(query: str, k: int = 3, document_id: str = None):
 
     if bm25 is None:
         return []
@@ -50,18 +50,23 @@ def search(query: str, k: int = 3):
 
     scores = bm25.get_scores(query_tokens)
 
-    # Highest score first; skip chunks that share no words with the query
+    # Highest score first; skip chunks that share no words with the query,
+    # and skip chunks from other documents when a document_id is given
     ranked = sorted(
         range(len(all_chunks)),
         key=lambda i: scores[i],
         reverse=True
     )
 
-    return [
-        all_chunks[i]
-        for i in ranked[:k]
-        if scores[i] > 0
-    ]
+    results = []
+    for i in ranked:
+        if scores[i] <= 0 or len(results) == k:
+            break
+        if document_id and all_chunks[i]["document_id"] != document_id:
+            continue
+        results.append(all_chunks[i])
+
+    return results
 
 
 def remove_document(document_id: str):

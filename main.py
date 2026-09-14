@@ -2,7 +2,7 @@
 import sys
 sys.stdout.reconfigure(encoding="utf-8")
 from fastapi import FastAPI,UploadFile, File, HTTPException
-from app.models import ChatRequest, ChatResponse
+from app.models import ChatRequest, ChatResponse, Source
 from app.prompt_builder import build_prompt
 from app.llm import LLM
 from fastapi.responses import StreamingResponse
@@ -41,8 +41,8 @@ def chat(request: ChatRequest):
     logger.info(f"Question received: {request.question}")
 
     try:
-        # 1. Retrieve relevant chunks (vector + BM25 -> rerank)
-        results = hybrid_search(request.question)
+        # 1. Retrieve relevant chunks (vector + BM25 -> rerank), optionally within one document
+        results = hybrid_search(request.question, document_id=request.document_id)
 
         # 2. Build grounded prompt
         prompt = build_prompt(request.question, results, request.history)
@@ -51,7 +51,17 @@ def chat(request: ChatRequest):
         answer, latency = llm.complete(prompt)
         logger.info(f"LLM latency: {latency:.2f}s")
 
-        return ChatResponse(answer=answer)
+        # 4. Return the passages the answer was built from, so the user can verify it
+        sources = [
+            Source(
+                filename=chunk.get("filename", "document"),
+                page=chunk.get("page", 0),
+                snippet=chunk["text"][:200]
+            )
+            for chunk in results
+        ]
+
+        return ChatResponse(answer=answer, sources=sources)
 
     except Exception as e:
         logger.error(f"Chat request failed: {e}")
@@ -65,7 +75,7 @@ def chat(request: ChatRequest):
 def stream_chat(request:ChatRequest):
 
 
-      results = hybrid_search(request.question)
+      results = hybrid_search(request.question, document_id=request.document_id)
 
       prompt = build_prompt(request.question, results,request.history)
       return StreamingResponse(

@@ -76,6 +76,8 @@ The goal was to build the complete lifecycle of a RAG application rather than on
 - **Cross-encoder reranking** to improve final context selection
 - **Groq LLM integration** for grounded answer generation
 - **Page-cited answers** – every chunk keeps its filename and page number through retrieval, and the model is asked to cite the pages it used
+- **Sources returned with every answer** – the passages the answer was built from (file, page, snippet), shown in the UI so the user can verify
+- **Document-scoped retrieval** – questions can be limited to one uploaded document via `document_id`
 - **Conversation history** for follow-up questions
 - **Streaming response endpoint**
 - **Document metadata and UUID-based identification**
@@ -279,15 +281,22 @@ Example request:
 ```json
 {
   "question": "What is the role of quercetin?",
-  "history": []
+  "history": [],
+  "document_id": null
 }
 ```
+
+`document_id` is optional: pass the id returned by the upload endpoint to search only that document, or omit it to search everything.
 
 Example response:
 
 ```json
 {
-  "answer": "Quercetin is a flavonoid that acts as both reducing and stabilizing agent ... (page 23, page 30)"
+  "answer": "Quercetin is a flavonoid that acts as both reducing and stabilizing agent ... (page 23, page 30)",
+  "sources": [
+    {"filename": "thesis.pdf", "page": 23, "snippet": "Out of all the natural compounds studied so far, quercetin ..."},
+    {"filename": "thesis.pdf", "page": 30, "snippet": "Quercetin (3,3′,4′,5,7-pentahydroxyflavone) is part of the flavonol ..."}
+  ]
 }
 ```
 
@@ -495,7 +504,6 @@ Current limitations include:
 - The lightweight document registry is also maintained in memory.
 - Container-local data is not intended as durable production storage; uploads and the index inside a container are lost when it is recreated.
 - Authentication and multi-user isolation are not implemented.
-- Retrieval is not currently filtered to an explicitly selected document.
 
 For a production deployment, these components could be replaced with persistent external services and user/document-level access controls.
 
@@ -508,7 +516,6 @@ Potential extensions include:
 - Managed Qdrant or standalone Qdrant service
 - Persistent document metadata database
 - Object storage for uploaded documents
-- Document-specific retrieval filters
 - Generation evaluation (answer correctness and faithfulness, not only retrieval)
 - Authentication and multi-user document isolation
 - Observability and tracing

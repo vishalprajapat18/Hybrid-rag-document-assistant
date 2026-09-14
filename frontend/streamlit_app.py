@@ -39,11 +39,30 @@ st.markdown(
 # Local default; the Docker image sets this so the UI can find the API inside the container
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
-if "active_document" not in st.session_state:
-    st.session_state.active_document = None
+if "active_document_id" not in st.session_state:
+    st.session_state.active_document_id = None   # None = search all documents
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+
+def fetch_documents():
+    try:
+        response = requests.get(f"{API_BASE_URL}/documents")
+        if response.status_code == 200:
+            return response.json()["documents"]
+    except requests.exceptions.RequestException:
+        pass
+    return []
+
+
+def show_sources(sources):
+    if not sources:
+        return
+    with st.expander(f"Sources ({len(sources)} passages)"):
+        for i, source in enumerate(sources, start=1):
+            st.markdown(f"**[{i}] {source['filename']} — page {source['page']}**")
+            st.caption(source["snippet"] + "…")
 
 st.markdown(
     '<div class="app-title">Document Intelligence Assistant</div>',
@@ -86,11 +105,10 @@ with st.sidebar:
 
                     if response.status_code == 200:
                         data = response.json()
-                        st.session_state.active_document = data["filename"]
+                        st.session_state.active_document_id = data["document_id"]
                         st.success(
                             f"{data['filename']} uploaded successfully"
                         )
-                    
 
                     else:
                         st.error(
@@ -105,6 +123,32 @@ with st.sidebar:
 
     st.divider()
 
+    st.subheader("Documents")
+
+    documents = fetch_documents()
+
+    # Dropdown: "All documents" or one specific upload (the id keeps duplicates apart)
+    labels = ["All documents"] + [
+        f"{doc['filename']} ({doc['document_id'][:8]})" for doc in documents
+    ]
+    ids = [None] + [doc["document_id"] for doc in documents]
+
+    current = ids.index(st.session_state.active_document_id) \
+        if st.session_state.active_document_id in ids else 0
+
+    choice = st.selectbox("Search in", labels, index=current)
+    st.session_state.active_document_id = ids[labels.index(choice)]
+
+    if st.session_state.active_document_id:
+        if st.button("Delete this document", use_container_width=True):
+            requests.delete(
+                f"{API_BASE_URL}/documents/{st.session_state.active_document_id}"
+            )
+            st.session_state.active_document_id = None
+            st.rerun()
+
+    st.divider()
+
     st.subheader("Conversation")
 
     if st.button(
@@ -115,18 +159,10 @@ with st.sidebar:
         st.rerun()
 
 
-if st.session_state.active_document:
-
-    st.markdown(
-        f"""
-        <div class="active-document">
-            <strong>Active document</strong><br>
-            {st.session_state.active_document}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
+if st.session_state.active_document_id:
+    st.caption(f"Searching in: {choice}")
+elif documents:
+    st.caption("Searching in: all uploaded documents")
 else:
     st.caption("No document uploaded yet")
 
@@ -141,6 +177,7 @@ for message in st.session_state.messages:
 
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        show_sources(message.get("sources"))
 
 question = st.chat_input("Ask a question about your document...")
 
@@ -166,7 +203,8 @@ if question:
 
     payload = {
         "question": question,
-        "history": history
+        "history": history,
+        "document_id": st.session_state.active_document_id
     }
 
     try:
@@ -184,13 +222,16 @@ if question:
 
                     data = response.json()
                     answer = data["answer"]
+                    sources = data.get("sources", [])
 
                     st.markdown(answer)
+                    show_sources(sources)
 
                     st.session_state.messages.append(
                         {
                             "role": "assistant",
-                            "content": answer
+                            "content": answer,
+                            "sources": sources
                         }
                     )
 
