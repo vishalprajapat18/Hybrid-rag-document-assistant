@@ -1,4 +1,16 @@
+---
+title: Hybrid RAG Document Assistant
+emoji: 📄
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Document Intelligence RAG Assistant
+
+**Live demo:** https://huggingface.co/spaces/vishalyet/hybrid-rag-document-assistant
 
 A document question-answering system built with **FastAPI, Qdrant, BM25, Cross-Encoder Reranking, Sentence Transformers, Groq, and Streamlit**.
 
@@ -85,7 +97,7 @@ The goal was to build the complete lifecycle of a RAG application rather than on
 - **Health-check endpoint**
 - **Retrieval evaluation script** with reproducible numbers (see [Retrieval Evaluation](#retrieval-evaluation))
 - **Streamlit web interface**
-- **Dockerized FastAPI backend**
+- **Dockerized** (API + UI in one image) and **deployed on Hugging Face Spaces**
 
 ---
 
@@ -404,21 +416,23 @@ http://localhost:8501
 
 ## Docker
 
-Build the backend image:
+Build the image:
 
 ```bash
-docker build -t rag-api .
+docker build -t rag-app .
 ```
 
 Run it while injecting environment variables at runtime:
 
 ```bash
-docker run --env-file .env -p 8000:8000 rag-api
+docker run --env-file .env -p 7860:7860 rag-app
 ```
 
-The FastAPI service is then exposed on port `8000`.
+The container starts the FastAPI backend in the background and serves the Streamlit UI on port `7860` (see `start.sh`). The image installs the CPU-only PyTorch wheel and downloads the embedding and reranking models at build time, so startup is fast and no secrets are baked in.
 
-The Docker image packages the Python runtime, application code, and required dependencies while keeping secrets outside the image.
+## Deployment (Hugging Face Spaces)
+
+The same Dockerfile runs the live demo on a free CPU Space. The YAML block at the top of this README is the Space configuration; `GROQ_API_KEY` is set as a Space secret. Because the free tier has no persistent disk, uploaded documents and the index reset whenever the Space restarts.
 
 ---
 
@@ -495,7 +509,7 @@ Current limitations include:
 - Qdrant is currently used in local filesystem mode, which allows only one process to open the storage folder at a time (a second server instance fails with a lock error).
 - BM25 state is maintained in application memory.
 - The lightweight document registry is also maintained in memory.
-- Container-local data is not intended as durable production storage.
+- Container-local data is not intended as durable production storage; on the free Hugging Face Space, uploads and the index are lost on restart.
 - Authentication and multi-user isolation are not implemented.
 - Retrieval is not currently filtered to an explicitly selected document.
 
@@ -514,7 +528,7 @@ Potential extensions include:
 - Generation evaluation (answer correctness and faithfulness, not only retrieval)
 - Authentication and multi-user document isolation
 - Observability and tracing
-- Cloud deployment and CI/CD
+- CI/CD (tests and evaluation on every push)
 
 ---
 

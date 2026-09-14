@@ -1,0 +1,2 @@
+# Shell scripts must keep Unix line endings or bash inside the Linux container fails on "\r"
+*.sh text eol=lf

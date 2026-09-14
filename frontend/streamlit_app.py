@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import requests
 
@@ -35,7 +36,8 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-API_BASE_URL = "http://localhost:8000"
+# Local default; the Docker image sets this so the UI can find the API inside the container
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 if "active_document" not in st.session_state:
     st.session_state.active_document = None
