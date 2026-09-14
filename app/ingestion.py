@@ -1,11 +1,8 @@
 from app.pdf_loader import load_pdf
-from app.preprocessing import clean_text
 from app.chunker import create_chunks
-from app.embedding import creating_embedding
+from app.embedding import creating_embeddings
 from app.qdrant_db import insert_chunks
 from app.bm25_db import add_chunks
-
-
 
 
 def ingest_document(
@@ -14,38 +11,33 @@ def ingest_document(
     filename: str
 ):
 
-    pages = load_pdf(pdf_path)
+    pages = load_pdf(pdf_path)   # pages are already cleaned by load_pdf
 
     for page in pages:
 
-        # 1. Get text from this PDF page
-        text = page["text"]
+        # 1. Split the page into chunks
+        chunks = create_chunks(page["text"])
 
-        # 2. Clean it
-        cleaned_text = clean_text(text)
+        if not chunks:
+            continue
 
-        # 3. Split into chunks
-        chunks = create_chunks(cleaned_text)
-
-        # 4. Send SAME chunks to BM25
+        # 2. Send SAME chunks to BM25
         add_chunks(
-         chunks=chunks,
-         document_id=document_id,
-         filename=filename,
-         page=page["page"]
+            chunks=chunks,
+            document_id=document_id,
+            filename=filename,
+            page=page["page"]
         )
 
-        # 5. Create embeddings for SAME chunks
-        embeddings = [
-            creating_embedding(chunk)
-            for chunk in chunks
-        ]
+        # 3. Embed all chunks of the page in ONE batched call
+        #    (one call per chunk made a 48-page PDF take ~2 minutes)
+        embeddings = creating_embeddings(chunks)
 
-        # 6. Store them in Qdrant
+        # 4. Store them in Qdrant
         insert_chunks(
-              chunks=chunks,
-               embeddings=embeddings,
-               page=page["page"],
-               document_id=document_id,
-              filename=filename
+            chunks=chunks,
+            embeddings=embeddings,
+            page=page["page"],
+            document_id=document_id,
+            filename=filename
         )

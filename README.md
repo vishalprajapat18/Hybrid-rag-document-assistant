@@ -79,7 +79,8 @@ The goal was to build the complete lifecycle of a RAG application rather than on
 - **Sources returned with every answer** – the passages the answer was built from (file, page, snippet), shown in the UI so the user can verify
 - **Document-scoped retrieval** – questions can be limited to one uploaded document via `document_id`
 - **Conversation history** for follow-up questions
-- **Streaming response endpoint**
+- **Streaming responses** – the UI renders the answer token by token from `/chat/stream`
+- **Batched embedding at ingestion** – one model call per page instead of one per chunk (a 48-page PDF indexes in ~15 s instead of ~2 min)
 - **Document metadata and UUID-based identification**
 - **Document listing and deletion endpoints**
 - **Pydantic request/response validation**
@@ -306,7 +307,14 @@ Example response:
 POST /chat/stream
 ```
 
-Streams generated text to the client.
+Same request body as `/chat`. Streams newline-delimited JSON: the first line carries the sources, every following line carries one piece of the answer as it is generated.
+
+```text
+{"sources": [{"filename": "thesis.pdf", "page": 23, "snippet": "..."}, ...]}
+{"token": "Quercetin"}
+{"token": " is"}
+...
+```
 
 ### Health Check
 

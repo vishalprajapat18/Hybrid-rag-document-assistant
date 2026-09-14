@@ -1,4 +1,5 @@
 import os
+import json
 import streamlit as st
 import requests
 
@@ -54,6 +55,23 @@ def fetch_documents():
     except requests.exceptions.RequestException:
         pass
     return []
+
+
+def stream_answer(payload):
+    """
+    Calls /chat/stream and yields answer text piece by piece.
+    The first line the API sends is the sources list; every line after that is a token.
+    """
+    with requests.post(f"{API_BASE_URL}/chat/stream", json=payload, stream=True) as response:
+        response.raise_for_status()
+        for line in response.iter_lines():
+            if not line:
+                continue
+            event = json.loads(line)
+            if "sources" in event:
+                st.session_state.last_sources = event["sources"]
+            elif "token" in event:
+                yield event["token"]
 
 
 def show_sources(sources):
@@ -211,34 +229,20 @@ if question:
 
         with st.chat_message("assistant"):
 
-            with st.spinner("Thinking..."):
+            # Show the answer word by word as the API streams it (see stream_answer)
+            st.session_state.last_sources = []
+            answer = st.write_stream(stream_answer(payload))
+            sources = st.session_state.last_sources
 
-                response = requests.post(
-                    f"{API_BASE_URL}/chat",
-                    json=payload
-                )
+            show_sources(sources)
 
-                if response.status_code == 200:
-
-                    data = response.json()
-                    answer = data["answer"]
-                    sources = data.get("sources", [])
-
-                    st.markdown(answer)
-                    show_sources(sources)
-
-                    st.session_state.messages.append(
-                        {
-                            "role": "assistant",
-                            "content": answer,
-                            "sources": sources
-                        }
-                    )
-
-                else:
-                    st.error(
-                        f"Chat failed: {response.text}"
-                    )
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": answer,
+                    "sources": sources
+                }
+            )
 
     except requests.exceptions.RequestException:
 

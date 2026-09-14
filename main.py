@@ -14,6 +14,7 @@ from app.bm25_db import remove_document as remove_bm25_document
 from app.qdrant_db import ensure_collection
 import shutil
 import os
+import json
 import logging
 logging.basicConfig(level=logging.INFO)
 
@@ -36,6 +37,18 @@ def home():
     return {"message": "RAG API Running"}
 
 
+def build_sources(results):
+    # The passages an answer was built from, so the user can verify it
+    return [
+        Source(
+            filename=chunk.get("filename", "document"),
+            page=chunk.get("page", 0),
+            snippet=chunk["text"][:200]
+        )
+        for chunk in results
+    ]
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
     logger.info(f"Question received: {request.question}")
@@ -51,17 +64,7 @@ def chat(request: ChatRequest):
         answer, latency = llm.complete(prompt)
         logger.info(f"LLM latency: {latency:.2f}s")
 
-        # 4. Return the passages the answer was built from, so the user can verify it
-        sources = [
-            Source(
-                filename=chunk.get("filename", "document"),
-                page=chunk.get("page", 0),
-                snippet=chunk["text"][:200]
-            )
-            for chunk in results
-        ]
-
-        return ChatResponse(answer=answer, sources=sources)
+        return ChatResponse(answer=answer, sources=build_sources(results))
 
     except Exception as e:
         logger.error(f"Chat request failed: {e}")
@@ -71,17 +74,26 @@ def chat(request: ChatRequest):
             detail="Failed to generate answer"
         )
 
+
 @app.post("/chat/stream")
-def stream_chat(request:ChatRequest):
+def stream_chat(request: ChatRequest):
+    """
+    Streams the answer as newline-delimited JSON:
+      first line  -> {"sources": [...]}
+      then        -> {"token": "..."} for every piece of text the LLM produces
+    """
+    logger.info(f"Question received (stream): {request.question}")
 
+    results = hybrid_search(request.question, document_id=request.document_id)
+    prompt = build_prompt(request.question, results, request.history)
+    sources = [source.model_dump() for source in build_sources(results)]
 
-      results = hybrid_search(request.question, document_id=request.document_id)
+    def event_stream():
+        yield json.dumps({"sources": sources}) + "\n"
+        for token in llm.stream(prompt):
+            yield json.dumps({"token": token}) + "\n"
 
-      prompt = build_prompt(request.question, results,request.history)
-      return StreamingResponse(
-           llm.stream(prompt),
-           media_type="text/plain"
-      )
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
 @app.post("/documents")
 def upload_document(file: UploadFile = File(...)):
